@@ -3,6 +3,7 @@ import { useState } from "react";
 import { SettingsCard } from "@/components/SettingsCard";
 import { ResultsTable } from "@/components/ResultsTable";
 import type { SearchBody, VideoLite } from "@/lib/types";
+import { downloadCsv } from "@/lib/csv";
 
 export default function Home() {
   const [items, setItems] = useState<VideoLite[]>([]);
@@ -10,42 +11,31 @@ export default function Home() {
 
   async function onSearch(b: SearchBody) {
     setBusy(true);
+    const toList = (val: any) =>
+      typeof val === "string"
+        ? val.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+        : Array.isArray(val) ? val : [];
+
+    const body: SearchBody = {
+      ...b,
+      channels: toList(b.channels),
+      keywords: toList(b.keywords)
+    };
+
     try {
-      const toList = (val: any) =>
-        typeof val === "string"
-          ? val.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-          : Array.isArray(val) ? val : [];
-
-      const body: SearchBody = {
-        ...b,
-        channels: toList((b as any).channels),
-        keywords: toList((b as any).keywords)
-      };
-
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
-
-      // 응답이 JSON이 아닐 때를 대비해 먼저 텍스트로 받고 파싱
-      const raw = await res.text();
-      let json: any = {};
-      try {
-        json = raw ? JSON.parse(raw) : {};
-      } catch {
-        throw new Error(`Non-JSON response: ${raw.slice(0, 200)}`);
-      }
-
       if (!res.ok) {
-        throw new Error(json?.error || `HTTP ${res.status}`);
+        const t = await res.text();
+        throw new Error(`search failed: ${res.status} :: ${t}`);
       }
-
+      const json = await res.json();
       setItems(json.items ?? []);
-    } catch (e: any) {
-      console.error(e);
-      alert(`검색 실패: ${e.message}`);
-      setItems([]);
+    } catch (err: any) {
+      alert(`검색 실패: ${err?.message ?? err}`);
     } finally {
       setBusy(false);
     }
@@ -59,25 +49,38 @@ export default function Home() {
       : id.replace(/^.*\/shorts\//, "").replace(/^.*v=/, "");
     if (!videoId) return alert("videoId를 찾지 못했습니다.");
 
-    const res = await fetch(`/api/keywords/from-video?videoId=${videoId}`);
-    const json = await res.json();
-    alert(`핵심 키워드(일부):\n${json.core.slice(0, 20).join(", ")}`);
+    try {
+      const res = await fetch(`/api/keywords/from-video?videoId=${videoId}`);
+      const json = await res.json();
+      alert(`핵심 키워드(일부):\n${json.core.slice(0, 20).join(", ")}`);
+    } catch (e: any) {
+      alert(`추출 실패: ${e?.message ?? e}`);
+    }
   }
 
   async function inspire() {
     const seed = prompt("씨앗 키워드(비워도 됨):");
-    const res = await fetch("/api/inspire", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ seed })
-    });
-    const json = await res.json();
-    alert(`영감 키워드(일부):\n${json.core.slice(0, 20).join(", ")}`);
+    try {
+      const res = await fetch("/api/inspire", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seed })
+      });
+      const json = await res.json();
+      alert(`영감 키워드(일부):\n${json.core.slice(0, 20).join(", ")}`);
+    } catch (e: any) {
+      alert(`실패: ${e?.message ?? e}`);
+    }
+  }
+
+  function exportCsv() {
+    if (items.length === 0) return alert("내보낼 결과가 없습니다.");
+    downloadCsv(items, "yt-vibe-results.csv");
   }
 
   return (
     <main className="mx-auto max-w-6xl p-6 grid gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">YouTube Hot Finder (MVP)</h1>
         <div className="flex gap-2">
           <button onClick={extractFromVideo} className="px-3 py-2 rounded border">
@@ -85,6 +88,14 @@ export default function Home() {
           </button>
           <button onClick={inspire} className="px-3 py-2 rounded border">
             영감 받기
+          </button>
+          <button
+            onClick={exportCsv}
+            disabled={items.length === 0}
+            className="px-3 py-2 rounded border disabled:opacity-50"
+            title={items.length === 0 ? "결과가 없어요" : "현재 결과를 CSV로 저장"}
+          >
+            CSV 내보내기
           </button>
         </div>
       </div>
