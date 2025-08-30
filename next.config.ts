@@ -1,9 +1,6 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  eslint: { ignoreDuringBuilds: true },   // ✅ 린트 에러 무시
-  typescript: { ignoreBuildErrors: true },// ✅ TS 타입 에러 무시
+const nextConfig = {
+  typescript: { ignoreBuildErrors: true }, // TS 오류로 빌드 멈추지 않음
+  eslint: { ignoreDuringBuilds: true },    // ESLint 오류로 빌드 멈추지 않음
   images: { unoptimized: true },
 };
-
 export default nextConfig;
